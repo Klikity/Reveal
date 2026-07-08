@@ -8,9 +8,13 @@ const DAILY_RESULT_KEY = "reveal_daily_result";
 const DAILY_STATS_KEY = "reveal_daily_stats";
 const CLASSIC_STATS_KEY = "reveal_classic_stats";
 const SEEN_RULES_KEY = "reveal_seen_daily_rules";
-
 const CLASSIC_PROGRESS_KEY = "reveal_classic_progress";
-const XP_PER_LEVEL = 500;
+
+const REVEAL_TYPES = {
+  BLUR: "blur",
+  SPOTLIGHT: "spotlight",
+  MOSAIC: "mosaic",
+};
 
 function getTodayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -172,12 +176,24 @@ function getShareGrid(won, elapsedSeconds) {
   return "🟨⬛⬛⬛⬛⬛";
 }
 
-function getLevelFromXp(xp) {
-  return Math.floor(xp / XP_PER_LEVEL) + 1;
+function getXpRequiredForLevel(level) {
+  return 250 + (level - 1) * 50;
 }
 
-function getCurrentLevelXp(xp) {
-  return xp % XP_PER_LEVEL;
+function getLevelInfo(xp) {
+  let level = 1;
+  let remainingXp = xp;
+
+  while (remainingXp >= getXpRequiredForLevel(level)) {
+    remainingXp -= getXpRequiredForLevel(level);
+    level++;
+  }
+
+  return {
+    level,
+    currentXp: remainingXp,
+    xpToNextLevel: getXpRequiredForLevel(level),
+  };
 }
 
 function getEmptyClassicProgress() {
@@ -201,7 +217,7 @@ function loadClassicProgress() {
       ...getEmptyClassicProgress(),
       ...saved,
       xp,
-      level: getLevelFromXp(xp),
+      level: getLevelInfo(xp).level,
     };
   } catch {
     return getEmptyClassicProgress();
@@ -271,7 +287,7 @@ function addClassicXp(result) {
   const updatedProgress = {
     ...currentProgress,
     xp: newXp,
-    level: getLevelFromXp(newXp),
+    level: getLevelInfo(newXp).level,
     totalClassicWins:
       currentProgress.totalClassicWins + (result.won ? 1 : 0),
     lastXpGained: xpGained,
@@ -466,6 +482,8 @@ function App() {
   const [gameKey, setGameKey] = useState(0);
   const [statsRefreshKey, setStatsRefreshKey] = useState(0);
 
+  const levelInfo = getLevelInfo(classicProgress.xp);
+  
   function handleModeChange(nextMode) {
     setMode(nextMode);
 
@@ -507,9 +525,9 @@ function App() {
           <div className="level-pill">
             ⭐ Lv. {classicProgress.level}
             <span>
-              {getCurrentLevelXp(classicProgress.xp)}
+              {levelInfo.currentXp}
               /
-              {XP_PER_LEVEL}
+              {levelInfo.xpToNextLevel}
             </span>
           </div>
         )}
@@ -530,10 +548,6 @@ function App() {
           Classic Reveal
         </button>
       </nav>
-
-      {mode === "classic" && (
-        <ClassicProgressPanel progress={classicProgress} />
-      )}
 
       {showRules && (
         <div className="rules-overlay">
@@ -638,9 +652,39 @@ function RevealGame({ mode, image, dailyResult, onNextClassic, onStatsUpdate, on
 
   const revealProgress = Math.min(100, Math.round((elapsedTime / MAX_TIME) * 100));
   const progress = revealProgress / 100;
+  
+  const spotlightRadius = 3 + progress * 70;
+
+  
+  const TOTAL_MOSAIC_TILES = 100;
+
+  const mosaicTiles = Math.max(
+    0,
+    Math.floor(
+      TOTAL_MOSAIC_TILES -
+      progress * TOTAL_MOSAIC_TILES
+    )
+  );
+  
+  const mosaicCells = useMemo(() => {
+    return Array.from({ length: 100 }, (_, id) => ({
+      id,
+      revealAt: Math.random(),
+    }));
+  }, [image.id]);
 
   const blur = finished ? 0 : Math.max(0, 35 - progress * 35);
   const overlayOpacity = finished ? 0 : Math.max(0, 0.75 - progress * 0.75);
+  
+  const [revealType] = useState(() => {
+    const types = [
+      REVEAL_TYPES.BLUR,
+      REVEAL_TYPES.SPOTLIGHT,
+      REVEAL_TYPES.MOSAIC,
+    ];
+
+    return types[Math.floor(Math.random() * types.length)];
+  });
 
   useEffect(() => {
     const preload = new Image();
@@ -808,6 +852,16 @@ function RevealGame({ mode, image, dailyResult, onNextClassic, onStatsUpdate, on
           <p className="eyebrow">
             {mode === "daily" ? `Daily Reveal #${getDailyNumber()}` : "Classic Reveal"}
           </p>
+          <p className="reveal-mode-tag">
+            {revealType === REVEAL_TYPES.BLUR &&
+              "🌫 Blur Reveal"}
+
+            {revealType === REVEAL_TYPES.SPOTLIGHT &&
+              "🔍 Spotlight Reveal"}
+
+            {revealType === REVEAL_TYPES.MOSAIC &&
+              "🧩 Mosaic Reveal"}
+          </p>
           <h2>{finished ? image.title : "What is hidden here?"}</h2>
         </div>
 
@@ -817,20 +871,45 @@ function RevealGame({ mode, image, dailyResult, onNextClassic, onStatsUpdate, on
         </div>
       </div>
 
-      
       <div className="image-card">
         <img
           src={image.imageUrl}
           alt={finished ? image.title : "Hidden image"}
           className="reveal-image"
           style={{
-            filter: `
-              blur(${blur}px)
-            `,
+            filter:
+              !finished && revealType === REVEAL_TYPES.BLUR
+                ? `blur(${blur}px)`
+                : "none",
           }}
         />
-      </div>
+          
+        {!finished &&
+          revealType === REVEAL_TYPES.MOSAIC && (
+            <div className="mosaic-grid">
+              {mosaicCells.map((cell) => (
+                <div
+                  key={cell.id}
+                  className={`mosaic-tile ${
+                    progress >= cell.revealAt
+                      ? "hidden-tile"
+                      : ""
+                  }`}
+                />
+              ))}
+            </div>
+          )}
 
+        {!finished &&
+          revealType === REVEAL_TYPES.SPOTLIGHT && (
+            <div
+              className="spotlight-overlay"
+              style={{
+                "--spotlight-size": `${5 + progress * 65}%`,
+              }}
+            />
+          )}
+      </div>
 
       <div className="progress-track" aria-label="Reveal progress">
         <div className="progress-fill" style={{ width: `${revealProgress}%` }} />
@@ -971,11 +1050,6 @@ function RevealGame({ mode, image, dailyResult, onNextClassic, onStatsUpdate, on
       )}
     </section>
   );
-}
-
-function ClassicProgressPanel({ progress }) {
-  const currentLevelXp = getCurrentLevelXp(progress.xp);
-  const progressPercent = Math.round((currentLevelXp / XP_PER_LEVEL) * 100);
 }
 
 function StatsPanel({ mode, dailyStats, classicStats }) {

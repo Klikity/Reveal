@@ -868,3 +868,52 @@ input:focus-visible {
   font-size: 0.75rem;
   font-weight: 700;
 }
+
+.spotlight-mask {
+  position: absolute;
+  inset: 0;
+
+  background: rgba(0, 0, 0, 0.95);
+
+  pointer-events: none;
+
+  transition: clip-path 1s linear;
+}
+
+.mosaic-grid {
+  position: absolute;
+  inset: 0;
+
+  display: grid;
+
+  grid-template-columns: repeat(10, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+
+  gap: 2px;
+
+  pointer-events: none;
+}
+
+.mosaic-tile {
+  background: #0b0f17;  
+  transition: opacity 0.4s ease;
+}
+
+.hidden-tile {
+  opacity: 0;
+}
+
+.spotlight-overlay {
+  position: absolute;
+  inset: 0;
+
+  pointer-events: none;
+
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      transparent 0,
+      transparent var(--spotlight-size),
+      rgba(0, 0, 0, 0.95) calc(var(--spotlight-size) + 1%)
+    );
+}
